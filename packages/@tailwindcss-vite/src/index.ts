@@ -3,6 +3,7 @@ import fixRelativePathsPlugin, { normalizePath } from 'internal-postcss-fix-rela
 import { Features, transform } from 'lightningcss'
 import path from 'path'
 import postcssrc from 'postcss-load-config'
+import { sveltePreprocess } from 'svelte-preprocess'
 import { compile } from 'tailwindcss'
 import type { Plugin, ResolvedConfig, Rollup, Update, ViteDevServer } from 'vite'
 
@@ -173,6 +174,7 @@ export default function tailwindcss(): Plugin[] {
   }
 
   return [
+    svelteProcessor(),
     {
       // Step 1: Scan source files for candidates
       name: '@tailwindcss/vite:scan',
@@ -346,8 +348,12 @@ function getExtension(id: string) {
 }
 
 function isTailwindCssFile(id: string, src: string) {
+  if (id.includes('/.vite/')) return
   let extension = getExtension(id)
-  let isCssFile = extension === 'css' || (extension === 'vue' && id.includes('&lang.css'))
+  let isCssFile =
+    extension === 'css' ||
+    (extension === 'vue' && id.includes('&lang.css')) ||
+    (extension === 'svelte' && id.includes('&lang.css'))
   return isCssFile && src.includes('@tailwind')
 }
 
@@ -373,4 +379,44 @@ function optimizeCss(
     },
     errorRecovery: true,
   }).code.toString()
+}
+
+// Register a plugin that can hook into the Svelte preprocessor if svelte is
+// enabled. This allows us to transform CSS in `<style>` tags and create a
+// stricter version of CSS that passes the Svelte compiler.
+//
+// Note that these files will undergo a second pass through the vite transpiler
+// later. This is necessary to compute `@tailwind utilities;` with the right
+// candidate list.
+//
+// In practice, it is not recommended to use `@tailwind utilities;` inside
+// Svelte components. Use an external `.css` file instead.
+function svelteProcessor() {
+  return {
+    name: '@tailwindcss/svelte',
+    api: {
+      sveltePreprocess: sveltePreprocess({
+        aliases: [
+          ['postcss', 'tailwindcss'],
+          ['css', 'tailwindcss'],
+        ],
+        async tailwindcss({
+          content,
+          attributes,
+        }: {
+          content: string
+          attributes: Record<string, string>
+        }) {
+          let compiler = await compile(
+            content.replace('@tailwind ', '@--skip-tailwind-directives '),
+            {},
+          )
+          return Promise.resolve({
+            code: compiler.build([]).replace('@--skip-tailwind-directives ', '@tailwind '),
+            attributes,
+          })
+        },
+      }),
+    },
+  }
 }
