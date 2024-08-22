@@ -324,8 +324,8 @@ export function registerPlugins(
   ast: AstNode[],
 ) {
   let resolvedConfig = resolveConfig(designSystem, [
-    createCompatConfig(designSystem.theme),
-    { plugins },
+    { config: createCompatConfig(designSystem.theme) },
+    { config: { plugins } },
   ])
 
   let pluginApi = buildPluginApi(designSystem, ast, resolvedConfig)
