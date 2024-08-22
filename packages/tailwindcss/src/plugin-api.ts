@@ -354,5 +354,8 @@ export function registerPlugins(
     handler(pluginApi)
   }
 
-  return pluginApi
+  return {
+    pluginApi,
+    resolvedConfig,
+  }
 }
